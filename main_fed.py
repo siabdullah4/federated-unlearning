@@ -9,6 +9,7 @@ import copy
 import numpy as np
 from torchvision import datasets, transforms
 import torch
+import time
 
 from utils.sampling import mnist_iid, mnist_noniid, cifar_iid
 from utils.options import args_parser
@@ -30,7 +31,7 @@ if __name__ == '__main__':
         dataset_test = datasets.MNIST('../data/mnist/', train=False, download=True, transform=trans_mnist)
         # sample users
         if args.iid:
-            dict_users = mnist_iid(dataset_train, args.num_users)
+            dict_users = mnist_iid(dataset_train, args.num_users)           
         else:
             dict_users = mnist_noniid(dataset_train, args.num_users)
     elif args.dataset == 'cifar':
@@ -41,6 +42,22 @@ if __name__ == '__main__':
             dict_users = cifar_iid(dataset_train, args.num_users)
         else:
             exit('Error: only consider IID setting in CIFAR10')
+    elif args.dataset == 'FMNIST':
+        trans_fmnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        dataset_train = datasets.FashionMNIST('../data/fmnist', train=True, download=True, transform=trans_fmnist)
+        dataset_test = datasets.FashionMNIST('../data/fmnist', train=False, download=True, transform=trans_fmnist)
+        if args.iid:
+            dict_users = fmnist_iid(dataset_train, args.num_users)
+        else:
+            exit('Error: only consider IID setting in FMNIST')
+    elif args.dataset == 'svhn':
+        trans_svhn = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        dataset_train = datasets.SVHN('../data/svhn', train=True, download=True, transform=trans_svhn)
+        dataset_test = datasets.SVHN('../data/svhn', train=False, download=True, transform=trans_svhn)
+        if args.iid:
+            dict_users = svhn_iid(dataset_train, args.num_users)
+        else:
+            exit('Error: only consider IID setting in SVHN')
     else:
         exit('Error: unrecognized dataset')
     img_size = dataset_train[0][0].shape
