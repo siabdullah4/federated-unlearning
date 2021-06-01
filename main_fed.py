@@ -11,7 +11,7 @@ from torchvision import datasets, transforms
 import torch
 import time
 
-from utils.sampling import mnist_iid, mnist_noniid, cifar_iid
+from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, fmnist_iid, svhn_iid
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Nets import MLP, CNNMnist, CNNCifar
@@ -42,8 +42,8 @@ if __name__ == '__main__':
             dict_users = cifar_iid(dataset_train, args.num_users)
         else:
             exit('Error: only consider IID setting in CIFAR10')
-    elif args.dataset == 'FMNIST':
-        trans_fmnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    elif args.dataset == 'fmnist':
+        trans_fmnist = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         dataset_train = datasets.FashionMNIST('../data/fmnist', train=True, download=True, transform=trans_fmnist)
         dataset_test = datasets.FashionMNIST('../data/fmnist', train=False, download=True, transform=trans_fmnist)
         if args.iid:
@@ -52,8 +52,10 @@ if __name__ == '__main__':
             exit('Error: only consider IID setting in FMNIST')
     elif args.dataset == 'svhn':
         trans_svhn = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-        dataset_train = datasets.SVHN('../data/svhn', train=True, download=True, transform=trans_svhn)
-        dataset_test = datasets.SVHN('../data/svhn', train=False, download=True, transform=trans_svhn)
+        dataset_train = datasets.SVHN('../data/svhn',  split='train', download=True, transform=trans_svhn)
+        dataset_test = datasets.SVHN('../data/svhn', split='test', download=True, transform=trans_svhn)
+        #dataset_extra = datasets.SVHN('../data/svhn', split='extra', transform=trans_svhn,
+         #                        target_transform=None, download=True)
         if args.iid:
             dict_users = svhn_iid(dataset_train, args.num_users)
         else:
@@ -63,9 +65,9 @@ if __name__ == '__main__':
     img_size = dataset_train[0][0].shape
 
     # build model
-    if args.model == 'cnn' and args.dataset == 'cifar':
+    if args.model == 'cnn' and args.dataset == 'svhn':
         net_glob = CNNCifar(args=args).to(args.device)
-    elif args.model == 'cnn' and args.dataset == 'mnist':
+    elif args.model == 'cnn' and args.dataset == 'fmnist':
         net_glob = CNNMnist(args=args).to(args.device)
     elif args.model == 'mlp':
         len_in = 1
