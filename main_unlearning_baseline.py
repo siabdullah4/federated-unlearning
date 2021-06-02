@@ -190,7 +190,7 @@ if __name__ == '__main__':
     print(delete_sample_number)
     for delete_user in delete_users:
         delete_index = np.random.choice(range(user_sample_len), delete_sample_number, replace=False)
-        dict_users[delete_user] = np.delete(dict_users[delete_user], delete_index)
+        dict_users[delete_user] = set(np.delete(list(dict_users[delete_user]), delete_index))
     print('after:',len(dict_users[delete_users[0]]))
 
     time_s = 0
