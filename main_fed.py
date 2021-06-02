@@ -19,6 +19,31 @@ from models.Fed import FedAvg
 from models.test import test_img
 
 
+
+def DeltaWeight(w1, w2):
+    diff = 0
+    norm1 = 0
+    norm2 = 0
+    all_dot = 0
+
+    for k in w1.keys():
+        param1 = w1[k]
+        param2 = w2[k]
+
+        curr_diff = torch.norm(param1 - param2, p='fro')
+        norm1 += torch.pow(torch.norm(param1, p='fro'), 2)
+        norm2 += torch.pow(torch.norm(param2, p='fro'), 2)
+        all_dot += torch.sum(param1 * param2)
+        diff += curr_diff * curr_diff
+    return all_dot / torch.sqrt(norm1 * norm2)
+
+
+def test():
+    net_glob.eval()
+    acc_test, loss_test = test_img(net_glob, dataset_test, args)
+    print("Testing accuracy: {:.2f}".format(acc_test))
+
+
 if __name__ == '__main__':
     # parse args
     args = args_parser()
@@ -82,6 +107,8 @@ if __name__ == '__main__':
     # copy weights
     w_glob = net_glob.state_dict()
 
+    w_init = copy.deepcopy(net_glob.state_dict())
+
     # training
     loss_train = []
     cv_loss, cv_acc = [], []
@@ -90,10 +117,17 @@ if __name__ == '__main__':
     best_loss = None
     val_acc_list, net_list = [], []
 
+    cut_round = args.cut_round
+    delete_data_ratio = args.delete_data_ratio
+    delete_client_ratio = args.delete_client_ratio
+
     if args.all_clients: 
         print("Aggregation over all clients")
         w_locals = [w_glob for i in range(args.num_users)]
+
     for iter in range(args.epochs):
+        net_glob.train()
+
         loss_locals = []
         if not args.all_clients:
             w_locals = []
@@ -116,7 +150,86 @@ if __name__ == '__main__':
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
-        loss_train.append(loss_avg)
+        # loss_train.append(loss_avg)
+        test()
+        '''
+         在指定的 epoch 进行截断
+         -  删除比例clients的比例数据集
+        '''
+        if iter == cut_round:
+            break
+
+    # net_glob: server model
+    # w_locals: 每个client的model list
+    old_w_glob = copy.deepcopy(w_glob)
+    old_w_locals = copy.deepcopy(w_locals)
+
+    print('-'*50)
+    # RETRAIN
+    print('RETRAIN')
+
+    # 重新定义参数
+    net_glob.load_state_dict(w_init)
+    w_glob = net_glob.state_dict()
+
+    if args.all_clients:
+        print("Aggregation over all clients")
+        w_locals = [w_glob for i in range(args.num_users)]
+    threshold_w = args.threshold_w
+    w_loss = 1000
+    round = 0
+
+    # 删除比例数据
+    delete_number = max(int(args.delete_client_ratio * args.num_users), 1)
+    delete_users = np.random.choice(range(args.num_users), delete_number, replace=False)
+
+    print('before:',len(dict_users[delete_users[0]]))
+    user_sample_len = len(dict_users[0])
+    delete_sample_number = max(int(args.delete_data_ratio * user_sample_len), 1)
+    for delete_user in delete_users:
+        delete_index = np.random.choice(range(user_sample_len), delete_sample_number, replace=False)
+        dict_users[delete_user] = np.delete(dict_users[delete_user], delete_index)
+    print('after:',len(dict_users[delete_users[0]]))
+
+    time_s = 0
+    # while w_loss > threshold_w:
+    new_epoch = args.new_epoch
+    for i in range(new_epoch):
+        net_glob.train()
+
+        start_time = timer()
+        loss_locals = []
+        if not args.all_clients:
+            w_locals = []
+        m = max(int(args.frac * args.num_users), 1)
+        idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+        for idx in idxs_users:
+            local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
+            w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device))
+            if args.all_clients:
+                w_locals[idx] = copy.deepcopy(w)
+            else:
+                w_locals.append(copy.deepcopy(w))
+            loss_locals.append(copy.deepcopy(loss))
+        # update global weights
+        w_glob = FedAvg(w_locals)
+
+        # copy weight to net_glob
+        net_glob.load_state_dict(w_glob)
+
+        # print loss
+        loss_avg = sum(loss_locals) / len(loss_locals)
+        round += 1
+        print('Round {:3d}, Average loss {:.3f}'.format(round, loss_avg))
+        end_time = timer()
+
+        time_s += end_time - start_time
+        test()
+        w_loss = DeltaWeight(old_w_glob, w_glob)
+        print('Delta Weight:{:.3f}'.format(w_loss))
+
+
+    print('Retrain Time : {:.3f}s'.format(time_s))
 
     # plot loss curve
     plt.figure()
@@ -130,4 +243,3 @@ if __name__ == '__main__':
     acc_test, loss_test = test_img(net_glob, dataset_test, args)
     print("Training accuracy: {:.2f}".format(acc_train))
     print("Testing accuracy: {:.2f}".format(acc_test))
-
