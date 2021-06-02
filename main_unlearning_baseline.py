@@ -151,7 +151,7 @@ if __name__ == '__main__':
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
         # loss_train.append(loss_avg)
-        #test()
+        test()
         '''
          在指定的 epoch 进行截断
          -  删除比例clients的比例数据集
@@ -180,12 +180,14 @@ if __name__ == '__main__':
     round = 0
 
     # 删除比例数据
-    delete_number = max(int(args.delete_client_ratio * args.num_users), 1)
+    delete_number = max(int(args.delete_client_ratio * args.num_users * args.frac), 1)
+    print(delete_number)
     delete_users = np.random.choice(range(args.num_users), delete_number, replace=False)
 
     print('before:',len(dict_users[delete_users[0]]))
     user_sample_len = len(dict_users[0])
     delete_sample_number = max(int(args.delete_data_ratio * user_sample_len), 1)
+    print(delete_sample_number)
     for delete_user in delete_users:
         delete_index = np.random.choice(range(user_sample_len), delete_sample_number, replace=False)
         dict_users[delete_user] = np.delete(dict_users[delete_user], delete_index)
@@ -197,7 +199,7 @@ if __name__ == '__main__':
     for i in range(new_epoch):
         net_glob.train()
 
-        start_time = timer()
+        start_time = time.perf_counter()
         loss_locals = []
         if not args.all_clients:
             w_locals = []
@@ -221,7 +223,7 @@ if __name__ == '__main__':
         loss_avg = sum(loss_locals) / len(loss_locals)
         round += 1
         print('Round {:3d}, Average loss {:.3f}'.format(round, loss_avg))
-        end_time = timer()
+        end_time = time.perf_counter()
 
         time_s += end_time - start_time
         test()
