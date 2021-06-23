@@ -41,7 +41,7 @@ def args_parser():
 
 
     # new arguments
-    parser.add_argument('--delete_round', type=int, default=1, help="truncated rounds")
+    parser.add_argument('--delete_round', type=int, default=10, help="truncated rounds")
     parser.add_argument('--new_epoch', type=int, default=200, help="new epoch")
     parser.add_argument('--delete_data_ratio', type=float, default=0.01, help="the ratio of delete data")
     parser.add_argument('--delete_client_ratio', type=float, default=0.1, help="the ratio of delete clients")

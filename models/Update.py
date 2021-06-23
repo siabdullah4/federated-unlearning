@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import random
 from sklearn import metrics
+from utils import ada_hessain
 
 
 class DatasetSplit(Dataset):
@@ -23,6 +24,21 @@ class DatasetSplit(Dataset):
         return image, label
 
 
+"""
+from ada_hessian import AdaHessian
+...
+model = YourModel()
+optimizer = AdaHessian(model.parameters())
+...
+for input, output in data:
+  optimizer.zero_grad()
+  loss = loss_function(output, model(input))
+  loss.backward(create_graph=True)  # this is the important line! 🧐
+  optimizer.step()
+...
+"""
+
+
 class LocalUpdate(object):
     def __init__(self, args, dataset=None, idxs=None):
         self.args = args
@@ -34,6 +50,7 @@ class LocalUpdate(object):
         net.train()
         # train and update
         optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=self.args.momentum)
+        #optimizer = ada_hessain.AdaHessian(net.parameters())
 
         epoch_loss = []
         for iter in range(self.args.local_ep):

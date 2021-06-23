@@ -17,6 +17,10 @@ from models.Nets import MLP, CNNMnist, CNNCifar
 from models.Fed import FedAvg
 from models.test import test_img
 
+def test():
+    net_glob.eval()
+    acc_test, loss_test = test_img(net_glob, dataset_test, args)
+    print("Testing accuracy: {:.2f}".format(acc_test))
 
 if __name__ == '__main__':
     # parse args
@@ -98,6 +102,7 @@ if __name__ == '__main__':
         loss_avg = sum(loss_locals) / len(loss_locals)
         print('Round {:3d}, Average loss {:.3f}'.format(iter, loss_avg))
         loss_train.append(loss_avg)
+        test()
 
     # plot loss curve
     plt.figure()
