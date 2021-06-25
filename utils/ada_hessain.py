@@ -3,11 +3,11 @@ import torch
 
 class AdaHessian(torch.optim.Optimizer):
     """
-    Implements the AdaHessian algorithm from "ADAHESSIAN: An Adaptive Second OrderOptimizer for Machine Learning"
+   Adaptive Hessian-free Method for Federated Learning - Code
 
     Arguments:
         params (iterable) -- iterable of parameters to optimize or dicts defining parameter groups
-        lr (float, optional) -- learning rate (default: 0.1)
+        lr (float, optional) -- learning rate (default: 0.01)
         betas ((float, float), optional) -- coefficients used for computing running averages of gradient and the squared hessian trace (default: (0.9, 0.999))
         eps (float, optional) -- term added to the denominator to improve numerical stability (default: 1e-8)
         weight_decay (float, optional) -- weight decay (L2 penalty) (default: 0.0)
@@ -16,7 +16,7 @@ class AdaHessian(torch.optim.Optimizer):
         n_samples (int, optional) -- how many times to sample `z` for the approximation of the hessian trace (default: 1)
     """
 
-    def __init__(self, params, lr=0.1, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.0,
+    def __init__(self, params, lr=0.01, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.0,
                  hessian_power=1.0, update_each=1, n_samples=1, average_conv_kernel=False):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
