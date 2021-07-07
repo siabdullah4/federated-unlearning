@@ -11,33 +11,31 @@ from torchvision import datasets, transforms
 import torch
 import time
 
-from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, fmnist_iid, svhn_iid
+from utils.sampling import mnist_iid, mnist_noniid, cifar_iid, fmnist_iid, svhn_iid, celeba_iid
 from utils.options import args_parser
 from models.Update import LocalUpdate
 from models.Update_unlearning import Local_Update
-from models.Nets import MLP, CNNMnist, CNNCifar
+from models.Nets import MLP, CNNMnist, CNNCifar, AlexNetMnist, AlexNetCifar, ResNet
 from models.Fed import FedAvg
 from models.test import test_img
+import loading_data as dataset
 
 
-
-def DeltaWeight(w1, w2):
+def compute_model_para_diff(model1_para_list, model2_para_list):
     diff = 0
     norm1 = 0
     norm2 = 0
     all_dot = 0
-
-    for k in w1.keys():
-        param1 = w1[k]
-        param2 = w2[k]
-
+    for i in model1_para_list.keys():
+        param1 = model1_para_list[i]
+        param2 = model2_para_list[i]
         curr_diff = torch.norm(param1 - param2, p='fro')
         norm1 += torch.pow(torch.norm(param1, p='fro'), 2)
         norm2 += torch.pow(torch.norm(param2, p='fro'), 2)
         all_dot += torch.sum(param1 * param2)
         diff += curr_diff * curr_diff
-    return all_dot / torch.sqrt(norm1 * norm2)
-
+    print('Diff Weight:{:.6f}'.format(torch.sqrt(diff)))
+    return (all_dot / torch.sqrt(norm1 * norm2))
 
 def test():
     net_glob.eval()
@@ -86,15 +84,49 @@ if __name__ == '__main__':
             dict_users = svhn_iid(dataset_train, args.num_users)
         else:
             exit('Error: only consider IID setting in SVHN')
+    elif args.dataset == 'celeba':
+        custom_transform = transforms.Compose([transforms.CenterCrop((178, 178)),
+                                               transforms.Resize((128, 128)),
+                                               transforms.ToTensor()])
+
+        dataset_train = dataset.CelebaDataset(csv_path='celeba-gender-train.csv',
+                                      img_dir='data/CelebA/img_align_celeba/',
+                                      transform=custom_transform)
+
+        valid_celeba= dataset.CelebaDataset(csv_path='celeba-gender-valid.csv',
+                                      img_dir='data/CelebA/img_align_celeba/',
+                                      transform=custom_transform)
+
+        dataset_test = dataset.CelebaDataset(csv_path='celeba-gender-test.csv',
+                                     img_dir='data/CelebA/img_align_celeba/',
+                                     transform=custom_transform)
+
+        if args.iid:
+             dict_users = celeba_iid(dataset_train, args.num_users)
+        else:
+             exit('Error: only consider IID setting in CIFAR10')
     else:
         exit('Error: unrecognized dataset')
     img_size = dataset_train[0][0].shape
 
     # build model
-    if args.model == 'cnn' and args.dataset == 'svhn':
+    if args.model == 'cnn' and args.dataset == 'cifar':
         net_glob = CNNCifar(args=args).to(args.device)
+    elif args.model == 'alexnet' and args.dataset == 'cifar':
+        net_glob = AlexNetCifar(args=args).to(args.device)
+
     elif args.model == 'cnn' and args.dataset == 'mnist':
         net_glob = CNNMnist(args=args).to(args.device)
+    elif args.model == 'alexnet' and args.dataset == 'mnist':
+        net_glob = AlexNetMnist(args=args).to(args.device)
+
+    elif args.model == 'cnn' and args.dataset == 'fmnist':
+        net_glob = CNNMnist(args=args).to(args.device)
+    elif args.model == 'alexnet' and args.dataset == 'fmnist':
+        net_glob = AlexNetMnist(args=args).to(args.device)
+
+    elif args.model == 'resnet' and args.dataset == 'celeba':
+        net_glob = ResNet(args=args).to(args.device)
     elif args.model == 'mlp':
         len_in = 1
         for x in img_size:
@@ -103,6 +135,7 @@ if __name__ == '__main__':
     else:
         exit('Error: unrecognized model')
     print(net_glob)
+    time_is = 0
     net_glob.train()
 
     # copy weights
@@ -158,12 +191,12 @@ if __name__ == '__main__':
          -  删除比例clients的比例数据集
         '''
         if iter == delete_round:
+            old_w_glob = copy.deepcopy(w_glob)
+            old_w_locals = copy.deepcopy(w_locals)
             break
 
     # net_glob: server model
     # w_locals: 每个client的model list
-    old_w_glob = copy.deepcopy(w_glob)
-    old_w_locals = copy.deepcopy(w_locals)
 
     print('-'*50)
     # RETRAIN
@@ -192,42 +225,87 @@ if __name__ == '__main__':
     for delete_user in delete_users:
         delete_index = np.random.choice(range(user_sample_len), delete_sample_number, replace=False)
         dict_users[delete_user] = set(np.delete(list(dict_users[delete_user]), delete_index))
-    print('after:',len(dict_users[delete_users[0]]))
+    print('after:', len(dict_users[delete_users[0]]))
 
     time_s = 0
-    # while w_loss > threshold_w:
+    
     new_epoch = args.new_epoch
+
     for i in range(new_epoch):
-        net_glob.train()
-
         start_time = time.perf_counter()
-        loss_locals = []
-        if not args.all_clients:
-            w_locals = []
-        m = max(int(args.frac * args.num_users), 1)
-        idxs_users = np.random.choice(range(args.num_users), m, replace=False)
-        for idx in idxs_users:
-            local = Local_Update(args=args, dataset=dataset_train, idxs=dict_users[idx])
-            w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device))
-            if args.all_clients:
-                w_locals[idx] = copy.deepcopy(w)
-            else:
-                w_locals.append(copy.deepcopy(w))
-            loss_locals.append(copy.deepcopy(loss))
-        # update global weights
-        w_glob = FedAvg(w_locals)
+        if ((i - args.jo) % args.T0 ==0) (i <= args.jo):
+            net_glob.train()
 
-        # copy weight to net_glob
-        net_glob.load_state_dict(w_glob)
+            loss_locals = []
+            if not args.all_clients:
+                w_locals = []
+            m = max(int(args.frac * args.num_users), 1)
+            idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+            for idx in idxs_users:
+                local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
+                w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device))
+                if args.all_clients:
+                    w_locals[idx] = copy.deepcopy(w)
+                else:
+                    w_locals.append(copy.deepcopy(w))
+                loss_locals.append(copy.deepcopy(loss))
+            # update global weights
+            w_glob = FedAvg(w_locals)
 
-        # print loss
-        loss_avg = sum(loss_locals) / len(loss_locals)
-        round += 1
-        print('Round {:3d}, Average loss {:.3f}'.format(round, loss_avg))
+            # copy weight to net_glob
+            net_glob.load_state_dict(w_glob)
+            # print loss
+            loss_avg = sum(loss_locals) / len(loss_locals)
+            round += 1
+            print('Round {:3d}, Average loss {:.3f}'.format(round, loss_avg))
+
+            test()
+            w_loss = compute_model_para_diff(old_w_glob, w_glob)
+            print('Delta Weight:{:.6f}'.format(w_loss))
+        else:
+            net_glob.train()
+
+            loss_locals = []
+            if not args.all_clients:
+                w_locals = []
+            m = max(int(args.frac * args.num_users), 1)
+            idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+            for idx in idxs_users:
+                local = Local_Update(args=args, dataset=dataset_train, idxs=dict_users[idx])
+                w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device))
+                if args.all_clients:
+                    w_locals[idx] = copy.deepcopy(w)
+                else:
+                    w_locals.append(copy.deepcopy(w))
+                loss_locals.append(copy.deepcopy(loss))
+            # update global weights
+            w_glob = FedAvg(w_locals)
+
+            # copy weight to net_glob
+            net_glob.load_state_dict(w_glob)
+
+            # print loss
+            loss_avg = sum(loss_locals) / len(loss_locals)
+            round += 1
+            print('Round {:3d}, Average loss {:.3f}'.format(round, loss_avg))
+            #end_time = time.perf_counter()
+
+            #time_s += end_time - start_time
+            test()
+            w_loss = compute_model_para_diff(old_w_glob, w_glob)
+            print('Delta Weight:{:.6f}'.format(w_loss))
         end_time = time.perf_counter()
 
         time_s += end_time - start_time
-        test()
+
+        # print loss
+        #loss_avg = sum(loss_locals) / len(loss_locals)
+        #round += 1
+        #print('Round {:3d}, Average loss {:.3f}'.format(round, loss_avg))
+        #end_time = time.perf_counter()
+
+        #time_s += end_time - start_time
+        #test()
         #w_loss = DeltaWeight(old_w_glob, w_glob)
         #print('Delta Weight:{:.3f}'.format(w_loss))
 

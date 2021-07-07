@@ -46,6 +46,8 @@ def args_parser():
     parser.add_argument('--delete_data_ratio', type=float, default=0.01, help="the ratio of delete data")
     parser.add_argument('--delete_client_ratio', type=float, default=0.1, help="the ratio of delete clients")
     parser.add_argument('--threshold_w', type=float, default=0.05, help="")
+    parser.add_argument('--j0', type=float, default=10, help="")
+    parser.add_argument('--T0', type=float, default=5, help="")
 
     args = parser.parse_args()
     return args
